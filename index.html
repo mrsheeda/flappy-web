@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Flappy Clone - Crypto Pipes with Logos</title>
+  <style>
+    * { margin: 0; padding: 0; }
+    canvas { background: #5ec0f3; display: block; margin: auto; }
+    body { font-family: monospace; background: #222; color: #fff; }
+    #score { position: absolute; top: 10px; left: 10px; font-size: 24px; }
+    #overlay {
+      position: fixed; inset:0;
+      display: flex;
+      align-items:center;
+      justify-content:center;
+      background: rgba(0,0,0,0.6);
+      flex-direction: column;
+      gap: 10px;
+      font-size: 20px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="score">Score: 0</div>
+  <canvas id="game" width="480" height="640"></canvas>
+  <div id="overlay">
+    <div>Click or press Space to start</div>
+    <button id="startBtn">Start</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const scoreDiv = document.getElementById('score');
+    const overlay = document.getElementById('overlay');
+    const startBtn = document.getElementById('startBtn');
+
+    const FIXED_WIDTH = 480;
+    let WIDTH = FIXED_WIDTH;
+    let HEIGHT = 0;
+
+    canvas.width = FIXED_WIDTH;
+    function resizeCanvas() {
+      canvas.height = window.innerHeight;
+      HEIGHT = canvas.height;
+    }
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      bird.y = Math.min(Math.max(bird.y, bird.radius), HEIGHT - bird.radius);
+    });
+    resizeCanvas();
+
+    let bird = { x: 100, y: HEIGHT / 2, radius: 12, vy: 0 };
+    const gravity = 800;
+    const flapStrength = -300;
+    const pipeWidth = 60;
+    const gapSize = 160;
+    const pipeSpeed = 150;
+    let pipes = [];
+    let lastPipeTime = 0;
+    const pipeInterval = 1.6;
+    let score = 0;
+    let running = false;
+    let lastTimestamp = null;
+
+    let nextNetworkIndex = 0;
+
+    const networks = [
+      { name: 'Aptos', abbr: 'APT', color: '#000000', logo: 'logos/aptos.svg', logoBg: '#FFFFFF' },
+      { name: 'Avalanche', abbr: 'AVAX', color: '#E84142', logo: 'logos/avax.svg', logoBg: '#FFFFFF' },
+      { name: 'Bitcoin', abbr: 'BTC', color: '#f7931a', logo: 'logos/bitcoin.svg', logoBg: '#FFFFFF' },
+      { name: 'BNB', abbr: 'BNB', color: '#F3BA2F', logo: 'logos/bnb.svg', logoBg: '#FFFFFF' },
+      { name: 'Celestia', abbr: 'TIA', color: '#7B2BF9', logo: 'logos/celestia.svg', logoBg: '#FFFFFF' },
+      { name: 'Cosmos', abbr: 'ATOM', color: '#1D4ED8', logo: 'logos/cosmos.svg', logoBg: '#FFFFFF' },
+      { name: 'Dogecoin', abbr: 'DOGE', color: '#c2a633', logo: 'logos/doge.svg', logoBg: '#FFFFFF' },
+      { name: 'Ethereum', abbr: 'ETH', color: '#3c3c3d', logo: 'logos/ethereum.svg', logoBg: '#FFFFFF' },
+      { name: 'Polkadot', abbr: 'DOT', color: '#E6007A', logo: 'logos/polkadot.svg', logoBg: '#FFFFFF' },
+      { name: 'Solana', abbr: 'SOL', color: '#9945FF', logo: 'logos/solana.svg', logoBg: '#FFFFFF' },
+      { name: 'Sui', abbr: 'SUI', color: '#54ACFF', logo: 'logos/sui.svg', logoBg: '#FFFFFF' },
+      { name: 'Ton', abbr: 'TON', color: '#0077FF', logo: 'logos/ton.svg', logoBg: '#FFFFFF' },
+      { name: 'Tron', abbr: 'TRX', color: '#EF0027', logo: 'logos/tron.svg', logoBg: '#FFFFFF' },
+      { name: 'Polygon', abbr: 'MATIC', color: '#8247e5', logo: 'logos/polygon.svg', logoBg: '#FFFFFF' }
+    ];
+
+    const logoMap = {};
+    networks.forEach(n => {
+      const img = new Image();
+      img.src = n.logo;
+      logoMap[n.abbr] = img;
+    });
+
+    const birdImg = new Image();
+    birdImg.src = 'anoma.svg';
+
+    function getContrastColor(hex) {
+      const c = hex.replace('#','');
+      const r = parseInt(c.substring(0,2),16);
+      const g = parseInt(c.substring(2,4),16);
+      const b = parseInt(c.substring(4,6),16);
+      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      return luminance > 0.6 ? '#000' : '#fff';
+    }
+
+    function reset() {
+      bird.y = HEIGHT / 2;
+      bird.vy = 0;
+      pipes = [];
+      score = 0;
+      scoreDiv.textContent = 'Score: 0';
+      lastPipeTime = 0;
+      lastTimestamp = null;
+      nextNetworkIndex = 0;
+    }
+
+    function spawnPipe() {
+      const holeY = 50 + Math.random() * (HEIGHT - gapSize - 100);
+      const network = networks[nextNetworkIndex];
+      nextNetworkIndex = (nextNetworkIndex + 1) % networks.length;
+
+      pipes.push({
+        x: WIDTH,
+        top: holeY,
+        bottom: holeY + gapSize,
+        passed: false,
+        network
+      });
+    }
+
+    function update(dt) {
+      bird.vy += gravity * dt;
+      bird.y += bird.vy * dt;
+
+      lastPipeTime += dt;
+      if (lastPipeTime > pipeInterval) {
+        spawnPipe();
+        lastPipeTime = 0;
+      }
+
+      pipes.forEach(p => {
+        p.x -= pipeSpeed * dt;
+        if (!p.passed && p.x + pipeWidth < bird.x) {
+          score += 1;
+          p.passed = true;
+          scoreDiv.textContent = 'Score: ' + score;
+        }
+      });
+
+      pipes = pipes.filter(p => p.x + pipeWidth > 0);
+
+      if (bird.y - bird.radius < 0 || bird.y + bird.radius > HEIGHT) {
+        endGame();
+      }
+
+      for (const p of pipes) {
+        if (
+          bird.x + bird.radius > p.x &&
+          bird.x - bird.radius < p.x + pipeWidth &&
+          (bird.y - bird.radius < p.top || bird.y + bird.radius > p.bottom)
+        ) {
+          endGame();
+        }
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+      pipes.forEach(p => {
+        const baseColor = p.network.color;
+        const textColor = getContrastColor(baseColor);
+        const logo = logoMap[p.network.abbr];
+        const logoSize = 28;
+        const padding = 4;
+
+        if (p.network.abbr === 'SOL') {
+          let gradTop = ctx.createLinearGradient(p.x, 0, p.x, p.top);
+          gradTop.addColorStop(0, '#14F195');
+          gradTop.addColorStop(1, '#9945FF');
+          ctx.fillStyle = gradTop;
+          ctx.fillRect(p.x, 0, pipeWidth, p.top);
+
+          let gradBottom = ctx.createLinearGradient(p.x, p.bottom, p.x, HEIGHT);
+          gradBottom.addColorStop(0, '#9945FF');
+          gradBottom.addColorStop(1, '#14F195');
+          ctx.fillStyle = gradBottom;
+          ctx.fillRect(p.x, p.bottom, pipeWidth, HEIGHT - p.bottom);
+        } else if (p.network.abbr === 'ATOM') {
+          let gradTop = ctx.createLinearGradient(p.x, 0, p.x, p.top);
+          gradTop.addColorStop(0, '#000000');
+          gradTop.addColorStop(1, '#FFFFFF');
+          ctx.fillStyle = gradTop;
+          ctx.fillRect(p.x, 0, pipeWidth, p.top);
+
+          let gradBottom = ctx.createLinearGradient(p.x, p.bottom, p.x, HEIGHT);
+          gradBottom.addColorStop(0, '#FFFFFF');
+          gradBottom.addColorStop(1, '#000000');
+          ctx.fillStyle = gradBottom;
+          ctx.fillRect(p.x, p.bottom, pipeWidth, HEIGHT - p.bottom);
+        } else {
+          ctx.fillStyle = baseColor;
+          ctx.fillRect(p.x, 0, pipeWidth, p.top);
+          ctx.fillRect(p.x, p.bottom, pipeWidth, HEIGHT - p.bottom);
+        }
+
+        // Branding top
+        const cxTop = p.x + pipeWidth / 2;
+        const cyTop = p.top / 2;
+        if (logo && logo.complete) {
+          ctx.save();
+          ctx.shadowColor = 'rgba(0,0,0,0.5)';
+          ctx.shadowBlur = 6;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+
+          if (p.network.logoBg) {
+            ctx.fillStyle = p.network.logoBg;
+            ctx.beginPath();
+            ctx.arc(cxTop, cyTop, logoSize / 2 + padding, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          ctx.drawImage(logo, cxTop - logoSize / 2, cyTop - logoSize / 2, logoSize, logoSize);
+          ctx.restore();
+        } else {
+          ctx.fillStyle = textColor;
+          ctx.font = '14px monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.save();
+          ctx.translate(cxTop, cyTop);
+          ctx.fillText(p.network.abbr, 0, 0);
+          ctx.restore();
+        }
+
+        // Branding bottom
+        const cxBottom = p.x + pipeWidth / 2;
+        const cyBottom = p.bottom + (HEIGHT - p.bottom) / 2;
+        if (logo && logo.complete) {
+          ctx.save();
+          ctx.shadowColor = 'rgba(0,0,0,0.5)';
+          ctx.shadowBlur = 6;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+
+          if (p.network.logoBg) {
+            ctx.fillStyle = p.network.logoBg;
+            ctx.beginPath();
+            ctx.arc(cxBottom, cyBottom, logoSize / 2 + padding, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          ctx.drawImage(logo, cxBottom - logoSize / 2, cyBottom - logoSize / 2, logoSize, logoSize);
+          ctx.restore();
+        } else {
+          ctx.fillStyle = textColor;
+          ctx.font = '14px monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.save();
+          ctx.translate(cxBottom, cyBottom);
+          ctx.fillText(p.network.abbr, 0, 0);
+          ctx.restore();
+        }
+      });
+
+      // Bird/logo with tilt
+      ctx.save();
+      ctx.translate(bird.x, bird.y);
+      const tilt = Math.max(Math.min(bird.vy / 300, 1), -1);
+      ctx.rotate(tilt * 0.5);
+      const imgSize = bird.radius * 2;
+      if (birdImg.complete) {
+        ctx.drawImage(birdImg, -imgSize / 2, -imgSize / 2, imgSize, imgSize);
+      }
+      ctx.restore();
+    }
+
+    function loop(timestamp) {
+      if (!running) return;
+      if (!lastTimestamp) lastTimestamp = timestamp;
+      const dt = (timestamp - lastTimestamp) / 1000;
+      lastTimestamp = timestamp;
+      update(dt);
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    function flap() {
+      bird.vy = flapStrength;
+    }
+
+    function startGame() {
+      reset();
+      running = true;
+      overlay.style.display = 'none';
+      requestAnimationFrame(loop);
+    }
+
+    function endGame() {
+      running = false;
+      overlay.innerHTML = `
+        <div>Game Over! Score: ${score}</div>
+        <button id="restartBtn">Restart</button>
+      `;
+      overlay.style.display = 'flex';
+      document.getElementById('restartBtn').addEventListener('click', startGame);
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.code === 'Space') {
+        if (!running) startGame();
+        flap();
+      }
+    });
+    document.addEventListener('click', () => {
+      if (!running) startGame();
+      flap();
+    });
+    startBtn.addEventListener('click', startGame);
+
+    birdImg.onload = () => {
+      draw();
+    };
+    draw();
+  </script>
+</body>
+</html>
