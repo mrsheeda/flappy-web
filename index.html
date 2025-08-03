@@ -278,6 +278,15 @@
         ctx.drawImage(birdImg, -imgSize / 2, -imgSize / 2, imgSize, imgSize);
       }
       ctx.restore();
+
+      // watermark (black for visibility)
+      ctx.save();
+      ctx.font = '12px monospace';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillText('developed by mrsaeein', WIDTH - 8, HEIGHT - 8);
+      ctx.restore();
     }
 
     function loop(timestamp) {
